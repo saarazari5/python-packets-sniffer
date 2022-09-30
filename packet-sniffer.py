@@ -2,6 +2,7 @@ from email.base64mime import header_length
 from ensurepip import version
 import socket
 import struct
+from termios import TAB2
 import textwrap
 
 TAB_1 = '\t - '
@@ -16,15 +17,66 @@ DATA_TAB_4 = '\t\t\t\t  '
 
 
 def main():
-    conn = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP) #all machine compatible
+    conn = socket.socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(3))  #all machine compatible
 
     while True:
         raw_data, addr = conn.recvfrom(65536) #biggest buffer size available
         dest_mac, src_mac, eth_proto, data = ethernet_frame(raw_data)
-         #8 for IPv4
-       if eth_proto == 8:
-        (version, header_length, ttl, proto, src, target, data) = ipv4_packet(data)
-        print(TAB_1 + 'IPv4 Packer: ')
+        #8 for IPv4
+        if eth_proto == 8:
+            (version, header_length, ttl, proto, src, target, data) = ipv4_packet(data)
+            print(TAB_1 + 'IPv4 Packer: ')
+            print(TAB_2 + 'Version: {}, Header Length: {}, TTL: {}'.format(version, header_length, ttl))
+            print(TAB_2 + 'Protocol: {}, Source: {}, Target: {}'.format(proto, src, target ))
+
+            if proto == 1 : 
+                icmp_type, code, checksum, data = icmp_packet(data)
+                print(TAB_1 + 'ICMP Packet: ')
+                print(TAB_2 + 'Type: {}, Code: {}, Checksum: {}.'.format(icmp_type, code, checksum))
+                print(TAB_2 + 'Data: ')
+                print(format_multi_line(DATA_TAB_3, data))
+
+            elif proto == 6:
+                src_port, dest_port, sequence, acknowledgment, flag_urg, flag_ack, flag_psh,flag_rst, flag_syn, flag_fin, data = tcp_segment(data)
+                print(TAB_1 + 'TCP Segment:')
+                print(TAB_2 + 'Source Port: {}, Destination Port: {}'.format(src_port, dest_port))
+                print(TAB_2 + 'Sequence: {}, Acknowledgment: {}'.format(sequence, acknowledgment))
+                print(TAB_2 + 'Flags:')
+                print(TAB_3 + 'URG: {}, ACK: {}, PSH: {}'.format(flag_urg, flag_ack, flag_psh))
+                print(TAB_3 + 'RST: {}, SYN: {}, FIN:{}'.format(flag_rst,flag_syn ,flag_fin))
+
+                if len(data) > 0:
+
+                    # HTTP
+                    if src_port == 80 or dest_port == 80:
+                        print(TAB_2 + 'HTTP Data:')
+                        try:
+                            try: data = data.decode('utf-8')
+                            except: data = data
+                            http_info = str(data).split('\n')
+                            for line in http_info:
+                                print(DATA_TAB_3 + str(line))
+                        except:
+                            print(format_multi_line(DATA_TAB_3, data))
+                    else:
+                        print(TAB_2 + 'TCP Data:')
+                        print(format_multi_line(DATA_TAB_3, data))
+
+            # UDP
+            elif proto == 17:
+                src_port, dest_port, size, data = udp_segment(data)
+                print(TAB_1 + 'UDP Segment:')
+                print(TAB_2 + 'Source Port: {}, Destination Port: {}, Length: {}'.format(src_port, dest_port, size))
+
+            # Other IPv4
+            else:
+                print(TAB_1 + 'Other IPv4 Data:')
+                print(format_multi_line(DATA_TAB_2, data))
+
+        else:
+            print('Ethernet Data:')
+            print(format_multi_line(DATA_TAB_1, data))
+            
 
 
 #unpack ethernet memory frame
